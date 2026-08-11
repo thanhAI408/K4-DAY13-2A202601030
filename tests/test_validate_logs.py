@@ -20,6 +20,7 @@ def test_validator_detects_raw_vietnamese_phone(
         "session_id": "session-01",
         "feature": "monitoring",
         "model": "fake-llm",
+        "env": "test",
         "payload": {"message_preview": "Contact 090 123 4567"},
     }
     log_path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")

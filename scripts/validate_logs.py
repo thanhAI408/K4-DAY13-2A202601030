@@ -5,7 +5,7 @@ from pathlib import Path
 
 LOG_PATH = Path("data/logs.jsonl")
 REQUIRED_FIELDS = {"ts", "level", "service", "event", "correlation_id"}
-ENRICHMENT_FIELDS = {"user_id_hash", "session_id", "feature", "model"}
+ENRICHMENT_FIELDS = {"user_id_hash", "session_id", "feature", "model", "env"}
 PII_DETECTORS = {
     "email": re.compile(r"[\w.-]+@[\w.-]+\.\w+"),
     "phone_vn": re.compile(r"(?<!\d)(?:\+84|0)(?:[ .-]?\d){9}(?!\d)"),
@@ -13,13 +13,14 @@ PII_DETECTORS = {
     "credit_card": re.compile(r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b"),
 }
 
-def main() -> None:
-    if not LOG_PATH.exists():
-        print(f"Error: {LOG_PATH} not found. Run the app and send some requests first.")
+def main(log_path: Path | None = None) -> None:
+    target_path = log_path or LOG_PATH
+    if not target_path.exists():
+        print(f"Error: {target_path} not found. Run the app and send some requests first.")
         sys.exit(1)
 
     records = []
-    for line in LOG_PATH.read_text(encoding="utf-8").splitlines():
+    for line in target_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         try:
@@ -28,7 +29,7 @@ def main() -> None:
             continue
 
     if not records:
-        print("Error: No valid JSON logs found in data/logs.jsonl")
+        print(f"Error: No valid JSON logs found in {target_path}")
         sys.exit(1)
 
     total = len(records)
@@ -106,4 +107,14 @@ def main() -> None:
     print(f"\nEstimated Score: {max(0, score)}/100")
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Validate structured API logs")
+    parser.add_argument(
+        "--log-path",
+        type=Path,
+        default=LOG_PATH,
+        help="Path to the JSONL log file to validate",
+    )
+    args = parser.parse_args()
+    main(args.log_path)
