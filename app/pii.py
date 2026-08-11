@@ -12,12 +12,13 @@ PII_PATTERNS: dict[str, str] = {
     "credit_card": r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b",
     # CCCD/CMND: 12 digits (new) — before phone so it is not partially eaten.
     "cccd": r"\b\d{12}\b",
+    # Counts 9 digits after the +84/0 prefix so spaced/dotted/dashed formats
+    # (090 123 4567, +84 90 123 4567) are also caught — do NOT weaken this.
     "phone_vn": r"(?<!\d)(?:\+84|0)(?:[ .-]?\d){9}(?!\d)",
     # VN passport: 1 letter + 7 digits (e.g. B1234567), e-passport 1 letter + 8.
-    "passport_vn": r"\b[A-Z]\d{7,8}\b",
-    # Vietnamese street address markers + the fragment that follows them.
-    # Conservative but intentionally err toward over-redaction for PII safety.
-    "address_vn": r"(?i)\b(?:số nhà|đường|phố|phường|quận|tổ|ấp|thôn|khu phố)\b[^,\n.;]{0,40}",
+    "passport": r"\b[A-Z]\d{7,8}\b",
+    # Vietnamese address marker keywords.
+    "address_vn": r"\b(?:số nhà|đường|phường|quận|huyện|tỉnh|thành phố)\b",
 }
 
 

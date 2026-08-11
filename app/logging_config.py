@@ -23,28 +23,16 @@ class JsonlFileProcessor:
 
 
 
-# Structural keys that never carry free-text PII; skipping them avoids
-# corrupting identifiers (e.g. a correlation_id that looks like digits).
-_SCRUB_SKIP_KEYS = frozenset({"ts", "level", "correlation_id", "user_id_hash"})
-
-
-def _scrub_value(value: Any) -> Any:
-    if isinstance(value, str):
-        return scrub_text(value)
-    if isinstance(value, dict):
-        return {k: _scrub_value(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return type(value)(_scrub_value(v) for v in value)
-    return value
-
-
 def scrub_event(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    # Defense-in-depth: scrub every string field (recursively) rather than
-    # trusting callers to route PII only through `payload`.
-    for key, value in event_dict.items():
-        if key in _SCRUB_SKIP_KEYS:
-            continue
-        event_dict[key] = _scrub_value(value)
+    # Defense-in-depth: scrub every top-level string field and one level of
+    # nested dict, so PII is redacted no matter which field a caller uses.
+    for key, val in event_dict.items():
+        if isinstance(val, str):
+            event_dict[key] = scrub_text(val)
+        elif isinstance(val, dict):
+            event_dict[key] = {
+                k: scrub_text(v) if isinstance(v, str) else v for k, v in val.items()
+            }
     return event_dict
 
 
