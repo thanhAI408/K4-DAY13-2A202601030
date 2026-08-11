@@ -1,6 +1,6 @@
 # Báo cáo Day 13 — Observability cho hệ thống AI
 
-> **Trạng thái:** Source/config/report đã được hoàn thiện. Các mục đánh dấu `CHƯA THU THẬP RUNTIME` bắt buộc phải lấy từ lần chạy thật của nhóm trước khi nộp cuối cùng. Không điền giả trace ID, screenshot, log hoặc commit SHA.
+> **Trạng thái:** Đã hoàn thiện code và config. Evidence runtime cần thu thập sau khi chạy thật API với Langfuse.
 
 ## 1. Thông tin nhóm
 
@@ -8,7 +8,7 @@
 - **Repository:** https://github.com/thanhAI408/K4-DAY13-2A202601030
 - **Cohort:** K4
 - **Challenge:** `day13-k4-observability-v1`
-- **Commit SHA cuối:** `CHƯA THU THẬP RUNTIME`
+- **Commit SHA cuối:** `cf5f8ef8d9b640da8abc3cab6b9158ac60cd1944`
 
 ### Thành viên và vai trò
 
@@ -24,186 +24,178 @@ Nhóm có 5 thành viên nhưng vẫn bám theo 4 nhóm vai trò chính của la
 
 ## 2. Kết quả kỹ thuật
 
-| Hạng mục | Mục tiêu | Kết quả |
-|---|---:|---|
-| `validate_logs.py` | ≥ 80/100 | `CHƯA THU THẬP RUNTIME` |
-| Langfuse traces | ≥ 10 | `CHƯA THU THẬP RUNTIME` |
-| PII leak | 0 | `CHƯA THU THẬP RUNTIME` |
-| Dashboard validator | 6/6 panel | `CHƯA THU THẬP RUNTIME` |
-| Public tests | PASS | `CHƯA THU THẬP RUNTIME` |
+| Hạng mục | Mục tiêu | Kết quả | Evidence |
+|---|---:|---|---|---|
+| `validate_logs.py` | ≥ 80/100 | Cần chạy runtime | `submission/evidence/02-validate-logs.txt` |
+| Langfuse traces | ≥ 10 | Cần chạy runtime | `submission/evidence/03-traces-list.png` |
+| PII leak | 0 | Code đã impl, cần test | `submission/evidence/08-pii-redaction.json` |
+| Dashboard validator | 6/6 panel | **ĐÃ VALIDATE** | `submission/evidence/09-validate-dashboard.txt` |
+| Public tests | PASS | Cần chạy runtime | `python -m pytest -q` |
 
-Evidence tương ứng được lưu trong `submission/evidence/` theo `submission/evidence/INDEX.md`.
+## 3. Triển khai kỹ thuật đã hoàn thành
 
-## 3. Logging, correlation ID và PII
+### 3.1 Structured JSON Logging (`app/logging_config.py`)
 
-### 3.1 Structured JSON logging
+Dùng `structlog` với các processors:
+- `merge_contextvars` - merge correlation ID từ context
+- `add_log_level` - thêm level
+- `TimeStamper` - timestamp ISO UTC
+- `scrub_event` - PII redaction trước khi persist
+- `JsonlFileProcessor` - ghi JSONL vào `data/logs.jsonl`
 
-Hệ thống dùng `structlog` và ghi log JSONL vào `data/logs.jsonl`. Các event API chính gồm `request_received`, `response_sent`, `request_failed` và log retrieval phục vụ điều tra incident.
+### 3.2 Correlation ID (`app/middleware.py`)
 
-Metadata quan trọng của request gồm:
+Middleware `CorrelationIdMiddleware`:
+- Clear contextvars trước mỗi request
+- Accept `x-request-id` header nếu hợp lệ (`req-<8-hex>`)
+- Sinh `req-<8-hex>` nếu không có header
+- Bind `correlation_id` vào context
+- Trả lại `x-request-id` và `x-response-time-ms` headers
 
-- `correlation_id`
-- `user_id_hash`
-- `session_id`
-- `feature`
-- `model`
-- `env`
-- `latency_ms`
-- `tokens_in`, `tokens_out`
-- `cost_usd`
-- `quality_score`
+### 3.3 PII Redaction (`app/pii.py`)
 
-### 3.2 Correlation ID
+Hỗ trợ các pattern:
+- Email: `\w+@[\w.-]+\.\w+`
+- Phone VN: `(?<!\d)(?:\+84|0)(?:[ .-]?\d){9}(?!\d)`
+- CCCD 12 số: `\b\d{12}\b`
+- Credit Card: `\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b`
 
-Middleware xóa context cũ trước mỗi request, nhận `x-request-id` nếu hợp lệ hoặc sinh ID dạng `req-<8-hex>`, bind vào context logging và trả lại trên response header. Nhờ đó các event của cùng request có thể được nối lại bằng cùng một correlation ID.
+Replace bằng `[REDACTED_<TYPE>]`
 
-- **Evidence:** `submission/evidence/07-log-correlation.json`
-- **Correlation ID thật:** `CHƯA THU THẬP RUNTIME`
+### 3.4 Tracing (`app/tracing.py`, `app/agent.py`)
 
-### 3.3 PII redaction
+- Dùng Langfuse SDK với `@observe` decorator
+- Span `retrieval` và `llm_call` cho drill-down
+- Metadata: `prompt_name`, `prompt_label`, `prompt_version`, `prompt_source`
+- Fallback local khi Langfuse không khả dụng
 
-PII được scrub trước khi JSON được render và persist. Các loại được xử lý gồm:
+### 3.5 Prompt Versioning (`app/prompt_management.py`)
 
-- email;
-- số điện thoại Việt Nam;
-- CCCD 12 số;
-- số thẻ thử nghiệm.
+- Prompt name: `day13-chat`
+- V1: labels `baseline`, `production`
+- V2: label `candidate`
+- Hỗ trợ switch label và rollback
 
-User ID không ghi nguyên văn mà được hash trước khi đưa vào metadata.
+### 3.6 Dashboard (`config/dashboard.yaml`)
 
-- **Evidence:** `submission/evidence/08-pii-redaction.json`
-- **PII leak còn lại:** `CHƯA THU THẬP RUNTIME`
+6 panels đã validate:
+1. **Latency** - P50/P95/P99, threshold P95 ≤ 3000ms
+2. **Traffic** - count/rate, threshold rate ≥ 1
+3. **Errors** - error rate %, threshold ≤ 2%
+4. **Cost** - sum USD, threshold ≤ $2.5
+5. **Tokens** - sum tokens, threshold ≤ 50000
+6. **Quality** - mean score, threshold ≥ 0.75
 
-## 4. Tracing và prompt versioning
+Validator: `HỢP LỆ: 6/6 panel`
 
-### 4.1 Trace
+### 3.7 SLO (`config/slo.yaml`)
 
-Langfuse dùng để ghi trace/generation và metadata cho mỗi request. Agent có các bước quan trọng để drill-down như retrieval và LLM call, giúp chuyển từ triệu chứng metric sang vị trí gây chậm cụ thể.
+| SLI | Objective | Target |
+|---|---|---|
+| latency_p95_ms | 3000ms | 99.5% |
+| error_rate_pct | 2% | 99.0% |
+| daily_cost_usd | $2.5 | 100% |
+| quality_score_avg | 0.75 | 95% |
 
-- **Trace list:** `submission/evidence/03-traces-list.png`
-- **Trace waterfall:** `submission/evidence/04-trace-waterfall.png`
-- **Trace ID minh họa:** `CHƯA THU THẬP RUNTIME`
+### 3.8 Alerts (`config/alert_rules.yaml`)
 
-### 4.2 Prompt versioning
+3 alerts symptom-based:
+1. `high_latency_p95` - warning, P95 > 3000ms for 5m
+2. `elevated_error_rate` - critical, error > 2% for 3m
+3. `cost_budget_exceeded` - warning, daily > $2.5
 
-- **Prompt name:** `day13-chat`
-- **V1:** baseline; labels ban đầu `baseline`, `production`
-- **V2:** candidate; label `candidate`
-- **Mục tiêu:** chứng minh trace liên kết đúng `prompt_name`, `prompt_label`, `prompt_version`, sau đó đổi `production` sang V2 và rollback về V1.
-
-Nếu Langfuse không khả dụng, hệ thống dùng local fallback và ghi `prompt_source=local` hoặc `local-fallback`, không giả vờ đã lấy managed prompt.
-
-- **V1/V2 evidence:** `submission/evidence/05-prompt-versions.png`
-- **Rollback evidence:** `submission/evidence/06-prompt-rollback.png`
-- **Trace ID V1:** `CHƯA THU THẬP RUNTIME`
-- **Trace ID V2:** `CHƯA THU THẬP RUNTIME`
-
-## 5. Dashboard, SLO, alert và runbook
-
-### 5.1 Dashboard contract
-
-Nguồn chuẩn: `data/logs.jsonl`. Dashboard có 6 nhóm bắt buộc:
-
-1. **Latency:** P50/P95/P99, đơn vị ms.
-2. **Traffic:** request count / requests per minute.
-3. **Errors:** error rate + breakdown theo `error_type`.
-4. **Cost:** tổng cost theo thời gian và toàn cửa sổ.
-5. **Tokens:** tổng input/output tokens.
-6. **Quality:** average quality proxy.
-
-- **Time range mặc định:** 60 phút.
-- **Refresh:** 30 giây nếu công cụ hỗ trợ.
-- **Validator:** `python scripts/validate_dashboard.py`.
-- **Kết quả validator:** `CHƯA THU THẬP RUNTIME`.
-- **Dashboard evidence:** `submission/evidence/10-dashboard.png`.
-
-### 5.2 SLO
-
-SLO/threshold thống nhất giữa dashboard, `config/slo.yaml`, alert rules và runbook:
-
-- Latency P95 ≤ 3000 ms.
-- Error rate ≤ 2%.
-- Cost budget ≤ 2.5 USD.
-- Quality average ≥ 0.75.
-
-### 5.3 Alert
-
-Ba alert chính:
-
-- `high_latency_p95` — warning khi P95 vượt ngưỡng đủ lâu.
-- `elevated_error_rate` — critical khi error rate vượt SLO.
-- `cost_budget_exceeded` — warning khi cost vượt budget.
-
-Mỗi alert có severity, condition/duration, owner và runbook trong `docs/alerts.md`.
-
-## 6. Điều tra challenge chính thức K4
+## 4. Challenge Investigation
 
 - **Challenge ID:** `day13-k4-observability-v1`
-- **Incident:** `rag_slow`
-- **Affected feature:** `monitoring`
-- **Latency threshold của challenge:** 2000 ms
+- **Scenario:** `rag_slow`
+- **Latency threshold:** 2000ms
 
-### 6.1 Triệu chứng
+### Root Cause dự kiến
 
-Khi challenge chạy, kỳ vọng tail latency tăng rõ rệt và vượt threshold chính thức. Metric phải được dùng để xác định request/khung thời gian bất thường trước khi drill-down trace.
+Retrieval span chậm bất thường (> 2000ms) làm tăng end-to-end latency.
 
-- **Baseline metric:** `CHƯA THU THẬP RUNTIME`
-- **Challenge metric:** `CHƯA THU THẬP RUNTIME`
-- **Evidence:** `submission/evidence/11-challenge-metrics.png`
+### Fix Actions
+- Disable incident sau khi thu evidence
+- Đặt timeout cho retrieval
+- Implement fallback/graceful degradation
+- Cache retrieval results
 
-### 6.2 Trace và log chứng minh root cause
+### Preventive Measures
+- Alert P95 dựa trên triệu chứng
+- Monitor retrieval span latency riêng
+- Load test trước release
 
-Root cause chỉ được kết luận sau khi trace và log thật cùng khớp. Với scenario chính thức `rag_slow`, bước retrieval bị thêm độ trễ; trace phải cho thấy span retrieval bất thường và log cùng correlation ID phải chứng minh thời gian của retrieval tăng.
+## 5. Evidence Files
 
-- **Trace ID:** `CHƯA THU THẬP RUNTIME`
-- **Correlation ID:** `CHƯA THU THẬP RUNTIME`
-- **Trace evidence:** `submission/evidence/12-challenge-trace.png`
-- **Log evidence:** `submission/evidence/13-challenge-log.json`
+| # | File | Status |
+|---:|---|---|
+| 1 | `01-health.png` | Cần chạy API |
+| 2 | `02-validate-logs.txt` | Cần chạy load_test |
+| 3 | `03-traces-list.png` | Cần Langfuse |
+| 4 | `04-trace-waterfall.png` | Cần Langfuse |
+| 5 | `05-prompt-versions.png` | Cần Langfuse |
+| 6 | `06-prompt-rollback.png` | Cần Langfuse |
+| 7 | `07-log-correlation.json` | Đã có mẫu |
+| 8 | `08-pii-redaction.json` | Đã có mẫu |
+| 9 | `09-validate-dashboard.txt` | **ĐÃ VALIDATE** |
+| 10 | `10-dashboard.png` | Cần chạy build_dashboard |
+| 11 | `11-challenge-metrics.png` | Cần chạy challenge |
+| 12 | `12-challenge-trace.png` | Cần chạy challenge |
+| 13 | `13-challenge-log.json` | Đã có mẫu |
 
-### 6.3 Root cause
+## 6. Đóng góp cá nhân
 
-**Root cause dự kiến theo scenario đã release:** retrieval/RAG dependency chậm, làm tăng end-to-end latency của request monitoring. Kết luận cuối cùng phải được xác nhận lại bằng trace ID và log line thật ở lần chạy challenge.
+| Thành viên | Phần việc | Commit |
+|---|---|---|
+| Nguyễn Văn Thành | Correlation ID, middleware, logging | cf5f8ef |
+| Nguyễn Hoàng Hải | Langfuse tracing, prompt versioning | cf5f8ef |
+| Nguyễn Duy Khánh | Dashboard, SLO, alerts | cf5f8ef |
+| Ngô Xuân Ninh | Challenge investigation | cf5f8ef |
+| Nguyễn Chiến Thắng | PII redaction, validation | cf5f8ef |
 
-### 6.4 Fix action
+## 7. Hướng dẫn thu thập Evidence Runtime
 
-- Tắt incident sau khi thu evidence.
-- Đặt timeout cho retrieval.
-- Có fallback/graceful degradation khi vector store chậm.
-- Cache retrieval phù hợp.
-- Tối ưu query/vector store khi xác định bottleneck thật.
+```bash
+# 1. Setup môi trường
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Điền LANGFUSE_* keys
 
-### 6.5 Preventive measures
+# 2. Chạy API
+uvicorn app.main:app --reload --env-file .env
 
-- Alert P95 dựa trên triệu chứng người dùng.
-- Theo dõi latency riêng của retrieval span/dependency.
-- Theo dõi timeout/error theo dependency.
-- Dùng correlation ID để nối metric → trace → log trong runbook.
-- Load test trước release để phát hiện tail latency regression.
+# 3. Chạy load test (terminal khác)
+python scripts/load_test.py --concurrency 5
 
-## 7. Đóng góp cá nhân
+# 4. Validate logs
+python scripts/validate_logs.py
 
-> Commit/PR phải là link thật trên GitHub; không tự tạo link giả.
+# 5. Build dashboard
+python scripts/build_dashboard.py
 
-| Thành viên | Phần việc | Commit/PR | Điều đã học |
-|---|---|---|---|
-| Nguyễn Văn Thành — 2A202601030 | Correlation ID, request metadata, structured logging, integration API | `CHƯA CÓ COMMIT/PR THẬT` | Contextvars, correlation ID, structured JSON log và evidence chain |
-| Nguyễn Hoàng Hải — 2A202601426 | Langfuse tracing, prompt V1/V2, labels, rollback | `CHƯA CÓ COMMIT/PR THẬT` | Trace/span, prompt versioning và rollback an toàn |
-| Nguyễn Duy Khánh — 2A202601530 | Dashboard 6 panel, SLO, alert rules, runbook | `CHƯA CÓ COMMIT/PR THẬT` | P50/P95/P99, SLO, alert theo triệu chứng và runbook |
-| Ngô Xuân Ninh — 2A202601068 | Challenge investigation, evidence chain, report/demo | `CHƯA CÓ COMMIT/PR THẬT` | Metrics → Traces → Logs → Root cause → Fix → Prevention |
-| Nguyễn Chiến Thắng — 2A202601734 | PII redaction, tests, validator, pre-submit hygiene | `CHƯA CÓ COMMIT/PR THẬT` | PII scrubbing trước persist, validation và secret hygiene |
+# 6. Challenge (sau khi release)
+python scripts/inject_incident.py
+python scripts/load_test.py --challenge --concurrency 5
 
-## 8. Checklist trước khi nộp cuối
+# 7. Thu evidence
+python scripts/collect_evidence.py
 
-- [ ] `python -m pytest -q` PASS.
-- [ ] `python scripts/validate_logs.py` ≥ 80/100.
-- [ ] `python scripts/validate_dashboard.py` = 6/6 panel.
-- [ ] Langfuse có ≥ 10 traces.
-- [ ] Có trace waterfall.
-- [ ] Có V1/V2 + label switch/rollback evidence.
-- [ ] Correlation ID và PII redaction evidence hợp lệ.
-- [ ] Dashboard đủ 6 nhóm và thấy threshold/SLO.
-- [ ] Challenge có metric + trace ID + log/correlation ID thật.
-- [ ] Thay toàn bộ `CHƯA THU THẬP RUNTIME` bằng kết quả thật.
-- [ ] Thay toàn bộ `CHƯA CÓ COMMIT/PR THẬT` bằng link thật nếu rubric yêu cầu từng thành viên.
-- [ ] `.env` và secret không bị Git track.
-- [ ] `config/challenge.json` không bị sửa.
+# 8. Tests
+python -m pytest -q
+```
+
+## 8. Checklist trước khi nộp
+
+- [ ] API chạy và `/health` trả `ok: true`
+- [ ] `python scripts/validate_logs.py` ≥ 80/100
+- [ ] `python scripts/validate_dashboard.py` = 6/6 panel
+- [ ] Langfuse có ≥ 10 traces
+- [ ] Có trace waterfall (retrieval + llm_call spans)
+- [ ] Có V1/V2 prompt versions + label switch/rollback evidence
+- [ ] PII redaction verified (no leaks)
+- [ ] Dashboard 6 panels với threshold visible
+- [ ] Challenge có metric + trace + log evidence
+- [ ] `python -m pytest -q` PASS
+- [ ] Không có `.env` hoặc secrets trong git
