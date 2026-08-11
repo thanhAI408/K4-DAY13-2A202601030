@@ -1,0 +1,3 @@
+Endpoint: GET http://127.0.0.1:8000/health
+
+{"ok":true,"tracing_enabled":true,"incidents":{"rag_slow":false,"tool_fail":false,"cost_spike":false}}

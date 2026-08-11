@@ -1,0 +1,20 @@
+Runtime artifact: dashboard/streamlit_app.py
+
+Launch command:
+  streamlit run dashboard/streamlit_app.py --server.port 8501
+
+Observed Streamlit startup URLs:
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.24.74:8501
+
+HTTP smoke check:
+  curl -I http://127.0.0.1:8501
+  HTTP/1.1 200 OK
+  content-type: text/html; charset=utf-8
+
+Data smoke check:
+  DASHBOARD_RECORDS=28 P95=1500ms
+
+The dashboard displays aggregate values only; it does not render raw user
+messages or raw user IDs. A screenshot should be captured manually from the
+local URL if the evaluator requires image evidence.
