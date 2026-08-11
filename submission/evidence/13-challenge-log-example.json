@@ -1,0 +1,15 @@
+{
+  "note": "Ví dụ challenge log - thu thập từ lần chạy challenge chính thức",
+  "challenge_id": "day13-k4-observability-v1",
+  "scenario": "rag_slow",
+  "expected_behavior": {
+    "retrieval_latency_ms": "> 2000 (bất thường)",
+    "total_latency_ms": "> 3000 (vượt SLO threshold)"
+  },
+  "evidence_chain": [
+    "1. Mở dashboard → thấy P95 latency tăng đột ngột",
+    "2. Mở Langfuse trace → thấy span 'retrieval' có duration > 2000ms",
+    "3. Tìm log cùng correlation_id → thấy 'retrieval_completed.latency_ms' cao bất thường"
+  ],
+  "required": "Chạy: python scripts/inject_incident.py && python scripts/load_test.py --challenge"
+}

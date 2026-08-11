@@ -1,0 +1,23 @@
+{
+  "note": "Ví dụ về PII đã được redact - thu thập từ lần chạy thật",
+  "test_cases": [
+    {
+      "original": "nguyen.van@example@gmail.com",
+      "redacted": "[REDACTED_EMAIL]"
+    },
+    {
+      "original": "0909123456",
+      "redacted": "[REDACTED_PHONE_VN]"
+    },
+    {
+      "original": "091234567890",
+      "redacted": "[REDACTED_CCCD]"
+    },
+    {
+      "original": "4111-1111-1111-1111",
+      "redacted": "[REDACTED_CREDIT_CARD]"
+    }
+  ],
+  "verification": "Chạy: python scripts/validate_logs.py để kiểm tra không có PII trong logs",
+  "required": "Thu thập từ data/logs.jsonl sau khi gửi request với PII trong message"
+}
