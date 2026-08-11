@@ -2,11 +2,11 @@ service: day13-observability-lab
 window: 28d
 slis:
   latency_p95_ms:
-    objective: 3000
+    objective: 1500
     target: 99.5
-    note: Replace with your group's target
+    note: Adjusted latency threshold for standard web API responsiveness
   error_rate_pct:
-    objective: 2
+    objective: 1.0
     target: 99.0
   daily_cost_usd:
     objective: 2.5
