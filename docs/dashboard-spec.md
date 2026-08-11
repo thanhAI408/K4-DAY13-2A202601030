@@ -11,6 +11,17 @@ Dashboard chính cần đủ 6 nhóm thông tin:
 5. Tổng token input/output.
 6. Quality proxy.
 
+## Error-rate contract
+
+`error_rate_pct` được tính thống nhất trên cùng một time window:
+
+```text
+count(event == "request_failed") / count(event == "request_received") * 100
+```
+
+Request được tính vào mẫu số ngay khi API nhận request; vì vậy request bị lỗi
+không bị loại khỏi mẫu số. Khi chưa có request, error rate bằng `0`.
+
 Tiêu chuẩn trình bày:
 
 - Khoảng thời gian mặc định: 1 giờ.

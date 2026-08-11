@@ -34,7 +34,7 @@ dashboard:
       title: Error rate and breakdown
       source: data/logs.jsonl
       events: [request_received, request_failed]
-      fields: [error_type]
+      fields: [event, error_type]
       aggregations: [error_rate_pct, count_by_value]
       query: 'count(event == "request_failed") / count(event == "request_received") * 100; count_by(error_type)'
       unit: percent
