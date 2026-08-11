@@ -3,12 +3,21 @@ from __future__ import annotations
 import hashlib
 import re
 
+# Order matters: re.sub is applied sequentially, so longer / more specific
+# patterns run first to avoid a general pattern redacting part of a value and
+# breaking a later match (e.g. a 16-digit card being clipped by the phone rule).
 PII_PATTERNS: dict[str, str] = {
     "email": r"[\w\.-]+@[\w\.-]+\.\w+",
-    "phone_vn": r"(?<!\d)(?:\+84|0)(?:[ .-]?\d){9}(?!\d)",
-    "cccd": r"\b\d{12}\b",
+    # 16-digit card (grouped or not) — must precede phone/cccd numeric rules.
     "credit_card": r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b",
-    # TODO: Add more patterns (e.g., Passport, Vietnamese address keywords)
+    # CCCD/CMND: 12 digits (new) — before phone so it is not partially eaten.
+    "cccd": r"\b\d{12}\b",
+    "phone_vn": r"(?<!\d)(?:\+84|0)(?:[ .-]?\d){9}(?!\d)",
+    # VN passport: 1 letter + 7 digits (e.g. B1234567), e-passport 1 letter + 8.
+    "passport_vn": r"\b[A-Z]\d{7,8}\b",
+    # Vietnamese street address markers + the fragment that follows them.
+    # Conservative but intentionally err toward over-redaction for PII safety.
+    "address_vn": r"(?i)\b(?:số nhà|đường|phố|phường|quận|tổ|ấp|thôn|khu phố)\b[^,\n.;]{0,40}",
 }
 
 
