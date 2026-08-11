@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -20,6 +21,35 @@ log = get_logger()
 app = FastAPI(title="Day 13 Observability Lab")
 app.add_middleware(CorrelationIdMiddleware)
 agent = LabAgent()
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Return a safe error response while keeping the request correlation ID."""
+    error_type = type(exc).__name__
+    correlation_id = getattr(request.state, "correlation_id", "unknown")
+    record_error(error_type)
+    log.error(
+        "unhandled_exception",
+        service="api",
+        correlation_id=correlation_id,
+        error_type=error_type,
+        payload={"detail": "internal server error"},
+    )
+    response = JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "correlation_id": correlation_id,
+        },
+    )
+    response.headers["x-request-id"] = correlation_id
+    started_at = getattr(request.state, "request_started_at", None)
+    if started_at is not None:
+        response.headers["x-response-time-ms"] = (
+            f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        )
+    return response
 
 
 @app.on_event("startup")
