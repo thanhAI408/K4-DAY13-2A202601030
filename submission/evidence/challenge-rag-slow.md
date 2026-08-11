@@ -14,7 +14,7 @@ The official run produced five monitoring responses above 3000 ms:
 | `req-ade71be9` | 3712 ms |
 | `req-f3aa1422` | 3599 ms |
 
-Across the current JSONL artifact there are 97 records, 33 API requests, 33
+Across the current JSONL artifact there are 100 records, 33 API requests, 33
 responses, and the five official slow responses. The overall response latency
 range is 1009–3712 ms with an average of 1507.91 ms.
 

@@ -2,7 +2,7 @@ Artifact: data/logs.jsonl
 Validator: scripts/validate_logs.py
 
 --- Lab Verification Results ---
-Total log records analyzed: 97
+Total log records analyzed: 100
 Records with missing required fields: 0
 Records with missing enrichment (context): 0
 Unique correlation IDs found: 35
