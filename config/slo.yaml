@@ -2,11 +2,11 @@ service: day13-observability-lab
 window: 28d
 slis:
   latency_p95_ms:
-    objective: 1500
+    objective: 3000
     target: 99.5
-    note: Adjusted latency threshold for standard web API responsiveness
+    note: Khớp threshold của dashboard; challenge K4 có threshold riêng 2000 ms.
   error_rate_pct:
-    objective: 1.0
+    objective: 2
     target: 99.0
   daily_cost_usd:
     objective: 2.5

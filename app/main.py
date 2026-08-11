@@ -13,7 +13,7 @@ from .metrics import record_error, snapshot
 from .middleware import CorrelationIdMiddleware
 from .pii import hash_user_id, summarize_text
 from .schemas import ChatRequest, ChatResponse
-from .tracing import tracing_enabled
+from .tracing import get_langfuse_client, tracing_enabled
 
 configure_logging()
 log = get_logger()
@@ -32,6 +32,16 @@ async def startup() -> None:
     )
 
 
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    if not tracing_enabled():
+        return
+    client = get_langfuse_client()
+    flush = getattr(client, "flush", None)
+    if callable(flush):
+        flush()
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"ok": True, "tracing_enabled": tracing_enabled(), "incidents": status()}
@@ -44,9 +54,14 @@ async def metrics() -> dict:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: Request, body: ChatRequest) -> ChatResponse:
-    # TODO: Enrich logs with request context (user_id_hash, session_id, feature, model, env)
-    # bind_contextvars(...)
-    
+    bind_contextvars(
+        user_id_hash=hash_user_id(body.user_id),
+        session_id=body.session_id,
+        feature=body.feature,
+        model=agent.model,
+        env=os.getenv("APP_ENV", "dev"),
+    )
+
     log.info(
         "request_received",
         service="api",
@@ -67,7 +82,15 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
             quality_score=result.quality_score,
-            payload={"answer_preview": summarize_text(result.answer)},
+            prompt_name=result.prompt_name,
+            prompt_label=result.prompt_label,
+            prompt_version=result.prompt_version,
+            prompt_source=result.prompt_source,
+            payload={
+                "answer_preview": summarize_text(result.answer),
+                "retrieval_latency_ms": result.retrieval_latency_ms,
+                "llm_latency_ms": result.llm_latency_ms,
+            },
         )
         return ChatResponse(
             answer=result.answer,
@@ -78,7 +101,7 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
             cost_usd=result.cost_usd,
             quality_score=result.quality_score,
         )
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover - exercised by incident demo
         error_type = type(exc).__name__
         record_error(error_type)
         log.error(

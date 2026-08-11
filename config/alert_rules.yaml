@@ -1,7 +1,7 @@
 alerts:
   - name: high_latency_p95
     severity: warning
-    condition: "latency_p95 > 3000ms for 5 minutes"
+    condition: "latency_p95_ms > 3000 for 5 minutes"
     type: symptom-based
     owner: on-call-engineer
     runbook: docs/alerts.md#alert-1
