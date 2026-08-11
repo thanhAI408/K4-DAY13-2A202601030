@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
+from structlog.contextvars import get_contextvars
+
 from . import metrics
 from .mock_llm import FakeLLM
 from .mock_rag import retrieve
@@ -43,27 +45,33 @@ class LabAgent:
         latency_ms = int((time.perf_counter() - started) * 1000)
         cost_usd = self._estimate_cost(response.usage.input_tokens, response.usage.output_tokens)
 
+        request_context = get_contextvars()
+        trace_context = {
+            key: request_context[key]
+            for key in ("correlation_id", "env")
+            if request_context.get(key)
+        }
+        prompt_metadata = {
+            "prompt_name": prompt.name,
+            "prompt_label": prompt.label,
+            "prompt_version": prompt.version,
+            "prompt_source": prompt.source,
+            **trace_context,
+        }
+
         langfuse_client.update_current_trace(
             user_id=hash_user_id(user_id),
             session_id=session_id,
             tags=["lab", feature, self.model],
-            metadata={
-                "prompt_name": prompt.name,
-                "prompt_label": prompt.label,
-                "prompt_version": prompt.version,
-                "prompt_source": prompt.source,
-            },
+            metadata=prompt_metadata,
         )
         langfuse_client.update_current_generation(
             model=self.model,
             metadata={
                 "doc_count": len(docs),
                 "query_preview": summarize_text(message),
-                "prompt_name": prompt.name,
-                "prompt_label": prompt.label,
-                "prompt_version": prompt.version,
-                "prompt_source": prompt.source,
                 "prompt_fetch_error": prompt.fetch_error,
+                **prompt_metadata,
             },
             usage_details={
                 "prompt_tokens": response.usage.input_tokens,

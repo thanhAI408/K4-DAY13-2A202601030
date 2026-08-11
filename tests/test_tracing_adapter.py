@@ -23,6 +23,10 @@ class TracingAdapterTests(unittest.TestCase):
         with patch.dict(os.environ, {"LANGFUSE_PUBLIC_KEY": "pk-only"}, clear=True):
             self.assertFalse(tracing.tracing_enabled())
 
+    def test_flush_is_safe_when_tracing_is_disabled(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            tracing.flush_tracing()
+
 
 if __name__ == "__main__":
     unittest.main()
